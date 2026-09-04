@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1100" viewBox="0 0 900 1100">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="hsl(280,12%,7%)"/>
+      <stop offset="100%" stop-color="hsl(298,14%,3%)"/>
+    </linearGradient>
+    <radialGradient id="r" cx="50%" cy="40%" r="60%">
+      
+    </radialGradient>
+    <filter id="n">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix in="noise" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.02 0"/>
+    </filter>
+  </defs>
+  <rect width="900" height="1100" fill="url(#g)"/>
+  <rect width="900" height="1100" fill="url(#r)"/>
+  <rect width="900" height="1100" filter="url(#n)"/>
+  <text x="50%" y="50%" font-family="monospace" font-size="23" letter-spacing="4" fill="rgba(245,245,245,0.16)" text-anchor="middle" dominant-baseline="middle">MOLETOM</text>
+</svg>
