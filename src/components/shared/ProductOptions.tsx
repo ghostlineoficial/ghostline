@@ -295,13 +295,13 @@ export function ProductOptions({
             },
 
             body: JSON.stringify({
-              title:
-                `${product.name} — ${selectedColor}, ${selectedSize} × ${quantity}`,
+              productId:
+                product.id,
 
-              price:
-                (product.priceCents /
-                  100) *
-                quantity,
+              variantId:
+                selectedVariant.id,
+
+              quantity,
 
               email,
             }),
@@ -703,8 +703,9 @@ export function ProductOptions({
                 </Button>
 
                 <p className="mt-4 text-center text-xs text-muted">
-                  Ambiente de teste
-                  do Mercado Pago.
+                  Pagamento processado
+                  com segurança pelo
+                  Mercado Pago.
                 </p>
               </div>
             ) : (

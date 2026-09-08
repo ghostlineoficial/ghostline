@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
+import {
+  mockProducts,
+  oversizedProducts,
+} from '@/lib/mock/catalog';
 
 export async function POST(req: Request) {
   try {
@@ -78,20 +82,54 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const price = Number(body.price);
+    const productId = String(
+      body.productId ?? '',
+    ).trim();
+
+    const variantId = String(
+      body.variantId ?? '',
+    ).trim();
+
+    const quantity = Number(
+      body.quantity,
+    );
 
     const payerEmail = String(
       body.email ?? user.email ?? '',
     ).trim();
 
+    if (!productId) {
+      return NextResponse.json(
+        {
+          error:
+            'Produto não informado.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (!variantId) {
+      return NextResponse.json(
+        {
+          error:
+            'Variação do produto não informada.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
     if (
-      !Number.isFinite(price) ||
-      price <= 0
+      !Number.isInteger(quantity) ||
+      quantity < 1
     ) {
       return NextResponse.json(
         {
           error:
-            'Valor do pagamento inválido.',
+            'Quantidade inválida.',
         },
         {
           status: 400,
@@ -111,8 +149,75 @@ export async function POST(req: Request) {
       );
     }
 
+    // =========================
+    // CATÁLOGO OFICIAL
+    // =========================
+
+    const catalog = [
+      ...mockProducts,
+      ...oversizedProducts,
+    ];
+
+    const product =
+      catalog.find(
+        (item) =>
+          item.id === productId,
+      );
+
+    if (!product || !product.active) {
+      return NextResponse.json(
+        {
+          error:
+            'Produto não encontrado ou indisponível.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const variant =
+      product.variants.find(
+        (item) =>
+          item.id === variantId,
+      );
+
+    if (!variant) {
+      return NextResponse.json(
+        {
+          error:
+            'Variação do produto inválida.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (variant.stock < quantity) {
+      return NextResponse.json(
+        {
+          error:
+            'Quantidade solicitada indisponível em estoque.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    // O preço é obtido exclusivamente
+    // do catálogo do servidor.
+    // O navegador não decide o valor.
+
+    const unitPriceCents =
+      product.priceCents;
+
     const totalCents =
-      Math.round(price * 100);
+      unitPriceCents * quantity;
+
+    const price =
+      totalCents / 100;
 
     const orderNumber =
       `GHOST-${Date.now()}`;
