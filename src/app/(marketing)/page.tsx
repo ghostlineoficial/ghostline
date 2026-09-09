@@ -106,11 +106,11 @@ export default function HomePage() {
         title="Beyond the limits"
         subtitle="Identidade. Pertencimento. Disciplina. Evolução. Streetwear premium pra quem vive academia, anime e cultura gamer."
         primaryCta={{
-          label: 'Explore Collection',
-          href: '/shop',
+          label: 'EXPLORAR DROP',
+          href: '/drops/drop-01',
         }}
         secondaryCta={{
-          label: 'Open Ghost Studio',
+          label: 'PERSONALIZAR',
           href: '/ghost-studio',
         }}
       />
