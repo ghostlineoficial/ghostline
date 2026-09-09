@@ -6,6 +6,55 @@ import {
   oversizedProducts,
 } from '@/lib/mock/catalog';
 
+type PaymentMethod = 'pix' | 'card';
+
+type CardData = {
+  token?: string;
+  paymentMethodId?: string;
+  paymentTypeId?: string;
+  installments?: number;
+  email?: string;
+  identificationType?: string;
+  identificationNumber?: string;
+};
+
+type ShippingAddressData = {
+  recipientName?: string;
+  postalCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+};
+
+function mapInitialPaymentStatus(
+  status?: string,
+): string {
+  switch (status) {
+    case 'approved':
+    case 'processed':
+      return 'approved';
+
+    case 'rejected':
+    case 'failed':
+    case 'cancelled':
+    case 'canceled':
+      return 'rejected';
+
+    case 'refunded':
+      return 'refunded';
+
+    case 'charged_back':
+    case 'chargeback':
+      return 'chargeback';
+
+    default:
+      return 'pending';
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const accessToken =
@@ -94,9 +143,28 @@ export async function POST(req: Request) {
       body.quantity,
     );
 
+    const paymentMethod =
+      String(
+        body.paymentMethod ?? 'pix',
+      ).trim() as PaymentMethod;
+
+    const card =
+      (body.card ?? {}) as CardData;
+
+    const shippingAddress =
+      (body.shippingAddress ??
+        {}) as ShippingAddressData;
+
     const payerEmail = String(
-      body.email ?? user.email ?? '',
+      card.email ??
+        body.email ??
+        user.email ??
+        '',
     ).trim();
+
+    // =========================
+    // VALIDAÇÃO PRODUTO
+    // =========================
 
     if (!productId) {
       return NextResponse.json(
@@ -137,16 +205,169 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!payerEmail) {
+    if (
+      paymentMethod !== 'pix' &&
+      paymentMethod !== 'card'
+    ) {
       return NextResponse.json(
         {
           error:
-            'E-mail do comprador é obrigatório para o Pix.',
+            'Forma de pagamento inválida.',
         },
         {
           status: 400,
         },
       );
+    }
+
+    if (!payerEmail) {
+      return NextResponse.json(
+        {
+          error:
+            'E-mail do comprador é obrigatório.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    // =========================
+    // ENDEREÇO DE ENTREGA
+    // =========================
+
+    const recipientName = String(
+      shippingAddress.recipientName ?? '',
+    ).trim();
+
+    const postalCode = String(
+      shippingAddress.postalCode ?? '',
+    )
+      .replace(/\D/g, '')
+      .trim();
+
+    const street = String(
+      shippingAddress.street ?? '',
+    ).trim();
+
+    const addressNumber = String(
+      shippingAddress.number ?? '',
+    ).trim();
+
+    const complement = String(
+      shippingAddress.complement ?? '',
+    ).trim();
+
+    const neighborhood = String(
+      shippingAddress.neighborhood ?? '',
+    ).trim();
+
+    const city = String(
+      shippingAddress.city ?? '',
+    ).trim();
+
+    const state = String(
+      shippingAddress.state ?? '',
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!recipientName) {
+      return NextResponse.json(
+        {
+          error:
+            'Nome do destinatário é obrigatório.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (postalCode.length !== 8) {
+      return NextResponse.json(
+        {
+          error:
+            'CEP de entrega inválido.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      !street ||
+      !addressNumber ||
+      !neighborhood ||
+      !city ||
+      state.length !== 2
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Endereço de entrega incompleto.',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    // =========================
+    // VALIDAÇÃO DO CARTÃO
+    // =========================
+
+    if (paymentMethod === 'card') {
+      if (
+        !card.token ||
+        !card.paymentMethodId
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Dados do cartão incompletos.',
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      if (
+        !Number.isInteger(
+          Number(card.installments),
+        ) ||
+        Number(card.installments) < 1
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Número de parcelas inválido.',
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      if (
+        card.paymentTypeId &&
+        card.paymentTypeId !==
+          'credit_card' &&
+        card.paymentTypeId !==
+          'debit_card'
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Tipo de cartão inválido.',
+          },
+          {
+            status: 400,
+          },
+        );
+      }
     }
 
     // =========================
@@ -206,9 +427,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // O preço é obtido exclusivamente
-    // do catálogo do servidor.
-    // O navegador não decide o valor.
+    // =========================
+    // PREÇO DEFINIDO NO SERVIDOR
+    // =========================
 
     const unitPriceCents =
       product.priceCents;
@@ -221,6 +442,71 @@ export async function POST(req: Request) {
 
     const orderNumber =
       `GHOST-${Date.now()}`;
+
+    // =========================
+    // SALVA ENDEREÇO
+    // =========================
+
+    const {
+      data: savedAddress,
+      error: addressError,
+    } = await supabase
+      .from('addresses')
+      .insert({
+        profile_id:
+          profile.id,
+
+        label:
+          'Entrega',
+
+        recipient_name:
+          recipientName,
+
+        street,
+
+        number:
+          addressNumber,
+
+        complement:
+          complement || null,
+
+        neighborhood,
+
+        city,
+
+        state,
+
+        postal_code:
+          postalCode,
+
+        country:
+          'BR',
+
+        is_default:
+          false,
+      })
+      .select('id')
+      .single();
+
+    if (
+      addressError ||
+      !savedAddress
+    ) {
+      console.error(
+        'Erro ao salvar endereço:',
+        addressError,
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Não foi possível salvar o endereço de entrega.',
+        },
+        {
+          status: 500,
+        },
+      );
+    }
 
     // =========================
     // CRIA PEDIDO NO SUPABASE
@@ -238,6 +524,9 @@ export async function POST(req: Request) {
         profile_id:
           profile.id,
 
+        shipping_address_id:
+          savedAddress.id,
+
         status:
           'pending_payment',
 
@@ -253,7 +542,9 @@ export async function POST(req: Request) {
         total_cents:
           totalCents,
       })
-      .select('id, order_number')
+      .select(
+        'id, order_number',
+      )
       .single();
 
     if (orderError || !order) {
@@ -271,6 +562,73 @@ export async function POST(req: Request) {
           status: 500,
         },
       );
+    }
+
+    // =========================
+    // PAYMENT METHOD
+    // =========================
+
+    const mercadoPagoPaymentMethod =
+      paymentMethod === 'pix'
+        ? {
+            id: 'pix',
+            type: 'bank_transfer',
+          }
+        : {
+            id:
+              card.paymentMethodId!,
+
+            type:
+              card.paymentTypeId ===
+              'debit_card'
+                ? 'debit_card'
+                : 'credit_card',
+
+            token:
+              card.token!,
+
+            installments:
+              Number(
+                card.installments,
+              ),
+          };
+
+    // =========================
+    // PAYER
+    // =========================
+
+    const payer: {
+      email: string;
+      first_name?: string;
+      identification?: {
+        type: string;
+        number: string;
+      };
+    } = {
+      email:
+        payerEmail,
+    };
+
+    if (
+      payerEmail.endsWith(
+        '@testuser.com',
+      )
+    ) {
+      payer.first_name =
+        'APRO';
+    }
+
+    if (
+      card.identificationType &&
+      card.identificationNumber
+    ) {
+      payer.identification = {
+        type:
+          card.identificationType,
+
+        number:
+          card.identificationNumber,
+      };
     }
 
     // =========================
@@ -318,27 +676,13 @@ export async function POST(req: Request) {
                   amount:
                     price.toFixed(2),
 
-                  payment_method: {
-                    id: 'pix',
-
-                    type:
-                      'bank_transfer',
-                  },
+                  payment_method:
+                    mercadoPagoPaymentMethod,
                 },
               ],
             },
 
-            payer: {
-              email:
-                payerEmail,
-
-              first_name:
-                payerEmail.endsWith(
-                  '@testuser.com',
-                )
-                  ? 'APRO'
-                  : undefined,
-            },
+            payer,
           }),
         },
       );
@@ -384,7 +728,9 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            'Erro ao criar pagamento Pix.',
+            paymentMethod === 'pix'
+              ? 'Erro ao criar pagamento Pix.'
+              : 'Erro ao processar pagamento com cartão.',
 
           mercadoPagoStatus:
             mercadoPagoResponse.status,
@@ -404,6 +750,20 @@ export async function POST(req: Request) {
         ?.payments?.[0];
 
     // =========================
+    // STATUS INICIAL
+    // =========================
+
+    const providerStatus =
+      payment?.status ??
+      data.status ??
+      null;
+
+    const initialPaymentStatus =
+      mapInitialPaymentStatus(
+        providerStatus,
+      );
+
+    // =========================
     // REGISTRA PAGAMENTO
     // =========================
 
@@ -414,6 +774,13 @@ export async function POST(req: Request) {
           ? String(data.id)
           : null;
 
+    const installments =
+      paymentMethod === 'card'
+        ? Number(
+            card.installments,
+          )
+        : 1;
+
     const {
       error: paymentError,
     } = await supabase
@@ -423,13 +790,14 @@ export async function POST(req: Request) {
           order.id,
 
         method:
-          'pix',
+          paymentMethod === 'pix'
+            ? 'pix'
+            : 'card',
 
         status:
-          'pending',
+          initialPaymentStatus,
 
-        installments:
-          1,
+        installments,
 
         amount_cents:
           totalCents,
@@ -452,23 +820,61 @@ export async function POST(req: Request) {
     }
 
     // =========================
-    // RESPOSTA PARA O SITE
+    // CARTÃO APROVADO
+    // =========================
+
+    if (
+      paymentMethod === 'card' &&
+      (
+        providerStatus ===
+          'approved' ||
+        providerStatus ===
+          'processed' ||
+        data.status ===
+          'processed'
+      )
+    ) {
+      const {
+        error: paidOrderError,
+      } = await supabase
+        .from('orders')
+        .update({
+          status: 'paid',
+        })
+        .eq(
+          'id',
+          order.id,
+        );
+
+      if (paidOrderError) {
+        console.error(
+          'Erro ao marcar pedido como pago:',
+          paidOrderError,
+        );
+      }
+    }
+
+    // =========================
+    // RESPOSTA
     // =========================
 
     return NextResponse.json({
+      paymentMethod,
+
       internalOrderId:
         order.id,
 
       orderNumber:
         order.order_number,
 
+      shippingAddressId:
+        savedAddress.id,
+
       mercadoPagoOrderId:
         data.id ?? null,
 
       status:
-        payment?.status ??
-        data.status ??
-        null,
+        providerStatus,
 
       statusDetail:
         payment?.status_detail ??
@@ -491,14 +897,14 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error(
-      'Erro ao criar Pix:',
+      'Erro ao criar pagamento:',
       error,
     );
 
     return NextResponse.json(
       {
         error:
-          'Erro interno ao criar pagamento Pix.',
+          'Erro interno ao criar pagamento.',
       },
       {
         status: 500,

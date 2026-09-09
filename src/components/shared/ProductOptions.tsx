@@ -1,13 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Copy, ShoppingBag, X, Zap } from 'lucide-react';
+import {
+  Copy,
+  CreditCard,
+  ShoppingBag,
+  X,
+  Zap,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { QuantityStepper } from '@/components/ui/QuantityStepper';
 import { ColorSwatch } from '@/components/ui/ColorSwatch';
 import { SizeSelector } from './SizeSelector';
 import { FavoriteButton } from './FavoriteButton';
 import { ShareButton } from './ShareButton';
+import { MercadoPagoCardForm } from './MercadoPagoCardForm';
+import {
+  CheckoutAddressForm,
+  type CheckoutAddress,
+} from './CheckoutAddressForm';
 import { useToast } from '@/components/ui/Toast';
 import { useUIStore } from '@/store/ui';
 import { useCartStore } from '@/store/cart';
@@ -35,6 +46,30 @@ interface PixData {
   externalReference?: string;
 }
 
+type PaymentMethod =
+  | 'pix'
+  | 'card'
+  | null;
+
+type CheckoutStep =
+  | 'address'
+  | 'payment';
+
+type CardFormData = {
+  token?: string;
+  issuer_id?: string;
+  payment_method_id?: string;
+  payment_type_id?: string;
+  installments?: number;
+  payer?: {
+    email?: string;
+    identification?: {
+      type?: string;
+      number?: string;
+    };
+  };
+};
+
 export function ProductOptions({
   product,
   initialColor,
@@ -43,73 +78,140 @@ export function ProductOptions({
   onColorChange,
 }: ProductOptionsProps) {
   const push = useToast((s) => s.push);
-  const openCart = useUIStore((s) => s.openCart);
-  const addItem = useCartStore((s) => s.addItem);
+
+  const openCart = useUIStore(
+    (s) => s.openCart,
+  );
+
+  const addItem = useCartStore(
+    (s) => s.addItem,
+  );
 
   const colors = useMemo(
-    () => getAvailableColors(product.variants),
+    () =>
+      getAvailableColors(
+        product.variants,
+      ),
     [product.variants],
   );
 
   const colorControlled =
     selectedColorProp !== undefined;
 
-  const [internalColor, setInternalColor] =
-    useState(() =>
-      getDefaultColor(product, initialColor),
-    );
-
-  const selectedColor = colorControlled
-    ? selectedColorProp
-    : internalColor;
-
-  const variantsForColor = useMemo(
-    () =>
-      product.variants.filter(
-        (variant) =>
-          variant.color === selectedColor,
-      ),
-    [product.variants, selectedColor],
+  const [
+    internalColor,
+    setInternalColor,
+  ] = useState(() =>
+    getDefaultColor(
+      product,
+      initialColor,
+    ),
   );
 
-  const [selectedSize, setSelectedSize] =
-    useState(() => {
-      const fromUrl =
-        variantsForColor.find(
-          (variant) =>
-            variant.size === initialSize &&
-            variant.stock > 0,
-        );
+  const selectedColor =
+    colorControlled
+      ? selectedColorProp
+      : internalColor;
 
-      return (
-        fromUrl?.size ??
-        variantsForColor.find(
+  const variantsForColor =
+    useMemo(
+      () =>
+        product.variants.filter(
           (variant) =>
-            variant.stock > 0,
-        )?.size ??
-        null
+            variant.color ===
+            selectedColor,
+        ),
+      [
+        product.variants,
+        selectedColor,
+      ],
+    );
+
+  const [
+    selectedSize,
+    setSelectedSize,
+  ] = useState(() => {
+    const fromUrl =
+      variantsForColor.find(
+        (variant) =>
+          variant.size ===
+            initialSize &&
+          variant.stock > 0,
       );
-    });
+
+    return (
+      fromUrl?.size ??
+      variantsForColor.find(
+        (variant) =>
+          variant.stock > 0,
+      )?.size ??
+      null
+    );
+  });
 
   const [quantity, setQuantity] =
     useState(1);
 
-  const [pixModalOpen, setPixModalOpen] =
-    useState(false);
+  const [
+    paymentModalOpen,
+    setPaymentModalOpen,
+  ] = useState(false);
 
-  const [payerEmail, setPayerEmail] =
-    useState('');
+  const [
+    checkoutStep,
+    setCheckoutStep,
+  ] =
+    useState<CheckoutStep>(
+      'address',
+    );
 
-  const [pixLoading, setPixLoading] =
-    useState(false);
+  const [
+    shippingAddress,
+    setShippingAddress,
+  ] =
+    useState<CheckoutAddress | null>(
+      null,
+    );
+
+  const [
+    paymentMethod,
+    setPaymentMethod,
+  ] =
+    useState<PaymentMethod>(null);
+
+  const [
+    payerEmail,
+    setPayerEmail,
+  ] = useState('');
+
+  const [
+    pixLoading,
+    setPixLoading,
+  ] = useState(false);
 
   const [pixData, setPixData] =
-    useState<PixData | null>(null);
+    useState<PixData | null>(
+      null,
+    );
+
+  const [
+    cardProcessing,
+    setCardProcessing,
+  ] = useState(false);
+
+  const [
+    cardResult,
+    setCardResult,
+  ] = useState<{
+    status?: string;
+    orderNumber?: string;
+  } | null>(null);
 
   const selectedVariant =
     variantsForColor.find(
       (variant) =>
-        variant.size === selectedSize,
+        variant.size ===
+        selectedSize,
     ) ?? null;
 
   const maxQuantity =
@@ -122,17 +224,25 @@ export function ProductOptions({
     const params =
       new URLSearchParams();
 
-    params.set('cor', color);
+    params.set(
+      'cor',
+      color,
+    );
 
     if (size) {
-      params.set('tamanho', size);
+      params.set(
+        'tamanho',
+        size,
+      );
     }
 
-    const query = params.toString();
+    const query =
+      params.toString();
 
-    const newUrl = query
-      ? `${window.location.pathname}?${query}`
-      : window.location.pathname;
+    const newUrl =
+      query
+        ? `${window.location.pathname}?${query}`
+        : window.location.pathname;
 
     window.history.replaceState(
       null,
@@ -145,15 +255,20 @@ export function ProductOptions({
     color: string,
   ) {
     if (!colorControlled) {
-      setInternalColor(color);
+      setInternalColor(
+        color,
+      );
     }
 
-    onColorChange?.(color);
+    onColorChange?.(
+      color,
+    );
 
     const nextVariants =
       product.variants.filter(
         (variant) =>
-          variant.color === color,
+          variant.color ===
+          color,
       );
 
     const nextSize =
@@ -162,19 +277,31 @@ export function ProductOptions({
           variant.stock > 0,
       )?.size ?? null;
 
-    setSelectedSize(nextSize);
+    setSelectedSize(
+      nextSize,
+    );
+
     setQuantity(1);
 
-    syncUrl(color, nextSize);
+    syncUrl(
+      color,
+      nextSize,
+    );
   }
 
   function handleSizeChange(
     size: string,
   ) {
-    setSelectedSize(size);
+    setSelectedSize(
+      size,
+    );
+
     setQuantity(1);
 
-    syncUrl(selectedColor, size);
+    syncUrl(
+      selectedColor,
+      size,
+    );
   }
 
   function handleAddToCart() {
@@ -204,27 +331,50 @@ export function ProductOptions({
       product.images[0];
 
     addItem({
-      id: selectedVariant.id,
-      productId: product.id,
-      variantId: selectedVariant.id,
-      name: product.name,
-      slug: product.slug,
+      id:
+        selectedVariant.id,
+
+      productId:
+        product.id,
+
+      variantId:
+        selectedVariant.id,
+
+      name:
+        product.name,
+
+      slug:
+        product.slug,
+
       image:
-        selectedImage?.url ?? '',
-      color: selectedColor,
-      size: selectedSize,
+        selectedImage?.url ??
+        '',
+
+      color:
+        selectedColor,
+
+      size:
+        selectedSize,
+
       priceCents:
         product.priceCents,
+
       quantity,
+
       stock:
         selectedVariant.stock,
-      sku: selectedVariant.sku,
+
+      sku:
+        selectedVariant.sku,
     });
 
     push({
-      tone: 'success',
+      tone:
+        'success',
+
       title:
         'Adicionado ao carrinho',
+
       description:
         `${product.name} — ${selectedColor}, ${selectedSize} × ${quantity}`,
     });
@@ -240,19 +390,136 @@ export function ProductOptions({
       return;
     }
 
-    setPixData(null);
-    setPayerEmail('');
-    setPixModalOpen(true);
+    setCheckoutStep(
+      'address',
+    );
+
+    setShippingAddress(
+      null,
+    );
+
+    setPixData(
+      null,
+    );
+
+    setPayerEmail(
+      '',
+    );
+
+    setPaymentMethod(
+      null,
+    );
+
+    setCardResult(
+      null,
+    );
+
+    setPaymentModalOpen(
+      true,
+    );
   }
 
-  function closePixModal() {
-    if (pixLoading) {
+  function closePaymentModal() {
+    if (
+      pixLoading ||
+      cardProcessing
+    ) {
       return;
     }
 
-    setPixModalOpen(false);
-    setPixData(null);
-    setPayerEmail('');
+    setPaymentModalOpen(
+      false,
+    );
+
+    setCheckoutStep(
+      'address',
+    );
+
+    setShippingAddress(
+      null,
+    );
+
+    setPaymentMethod(
+      null,
+    );
+
+    setPixData(
+      null,
+    );
+
+    setPayerEmail(
+      '',
+    );
+
+    setCardResult(
+      null,
+    );
+  }
+
+  function handleAddressContinue(
+    address: CheckoutAddress,
+  ) {
+    setShippingAddress(
+      address,
+    );
+
+    setPaymentMethod(
+      null,
+    );
+
+    setCheckoutStep(
+      'payment',
+    );
+  }
+
+  function returnToAddress() {
+    if (
+      pixLoading ||
+      cardProcessing
+    ) {
+      return;
+    }
+
+    setPaymentMethod(
+      null,
+    );
+
+    setPixData(
+      null,
+    );
+
+    setCardResult(
+      null,
+    );
+
+    setCheckoutStep(
+      'address',
+    );
+  }
+
+  function returnToPaymentMethods() {
+    if (
+      pixLoading ||
+      cardProcessing
+    ) {
+      return;
+    }
+
+    setPaymentMethod(
+      null,
+    );
+
+    setPixData(
+      null,
+    );
+
+    setPayerEmail(
+      '',
+    );
+
+    setCardResult(
+      null,
+    );
   }
 
   async function handleCreatePix() {
@@ -260,6 +527,25 @@ export function ProductOptions({
       !selectedVariant ||
       !selectedSize
     ) {
+      return;
+    }
+
+    if (!shippingAddress) {
+      push({
+        tone:
+          'danger',
+
+        title:
+          'Endereço não informado',
+
+        description:
+          'Informe o endereço de entrega antes de continuar.',
+      });
+
+      setCheckoutStep(
+        'address',
+      );
+
       return;
     }
 
@@ -271,8 +557,12 @@ export function ProductOptions({
       !email.includes('@')
     ) {
       push({
-        tone: 'danger',
-        title: 'E-mail inválido',
+        tone:
+          'danger',
+
+        title:
+          'E-mail inválido',
+
         description:
           'Informe um e-mail válido para gerar o Pix.',
       });
@@ -281,30 +571,41 @@ export function ProductOptions({
     }
 
     try {
-      setPixLoading(true);
+      setPixLoading(
+        true,
+      );
 
       const response =
         await fetch(
           '/api/mercadopago/create-order',
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
             },
 
-            body: JSON.stringify({
-              productId:
-                product.id,
+            body:
+              JSON.stringify(
+                {
+                  productId:
+                    product.id,
 
-              variantId:
-                selectedVariant.id,
+                  variantId:
+                    selectedVariant.id,
 
-              quantity,
+                  quantity,
 
-              email,
-            }),
+                  paymentMethod:
+                    'pix',
+
+                  email,
+
+                  shippingAddress,
+                },
+              ),
           },
         );
 
@@ -314,9 +615,12 @@ export function ProductOptions({
       let data: any = {};
 
       try {
-        data = responseText
-          ? JSON.parse(responseText)
-          : {};
+        data =
+          responseText
+            ? JSON.parse(
+                responseText,
+              )
+            : {};
       } catch {
         throw new Error(
           'O servidor retornou uma resposta inválida.',
@@ -363,37 +667,48 @@ export function ProductOptions({
           data.statusDetail,
 
         qrCode:
-          data.qrCode ?? null,
+          data.qrCode ??
+          null,
 
         qrCodeBase64:
           data.qrCodeBase64 ??
           null,
 
         ticketUrl:
-          data.ticketUrl ?? null,
+          data.ticketUrl ??
+          null,
 
         externalReference:
           data.externalReference,
       });
     } catch (error) {
-      console.error(error);
+      console.error(
+        error,
+      );
 
       push({
-        tone: 'danger',
+        tone:
+          'danger',
+
         title:
           'Erro ao gerar Pix',
+
         description:
           error instanceof Error
             ? error.message
             : 'Não foi possível gerar o pagamento Pix.',
       });
     } finally {
-      setPixLoading(false);
+      setPixLoading(
+        false,
+      );
     }
   }
 
   async function handleCopyPix() {
-    if (!pixData?.qrCode) {
+    if (
+      !pixData?.qrCode
+    ) {
       return;
     }
 
@@ -403,21 +718,302 @@ export function ProductOptions({
       );
 
       push({
-        tone: 'success',
-        title: 'Pix copiado',
+        tone:
+          'success',
+
+        title:
+          'Pix copiado',
+
         description:
           'O código Pix Copia e Cola foi copiado.',
       });
     } catch (error) {
-      console.error(error);
+      console.error(
+        error,
+      );
 
       push({
-        tone: 'danger',
+        tone:
+          'danger',
+
         title:
           'Não foi possível copiar',
+
         description:
           'Selecione o código Pix manualmente.',
       });
+    }
+  }
+
+  async function handleCardSubmit(
+    formData: CardFormData,
+  ) {
+    if (
+      !selectedVariant ||
+      !selectedSize
+    ) {
+      throw new Error(
+        'Selecione uma variação válida do produto.',
+      );
+    }
+
+    if (!shippingAddress) {
+      throw new Error(
+        'Informe o endereço de entrega antes de continuar.',
+      );
+    }
+
+    const token =
+      String(
+        formData.token ??
+          '',
+      ).trim();
+
+    const paymentMethodId =
+      String(
+        formData.payment_method_id ??
+          '',
+      ).trim();
+
+    const paymentTypeId =
+      String(
+        formData.payment_type_id ??
+          'credit_card',
+      ).trim();
+
+    const installments =
+      Number(
+        formData.installments ??
+          1,
+      );
+
+    const email =
+      String(
+        formData.payer
+          ?.email ??
+          '',
+      ).trim();
+
+    const identificationType =
+      String(
+        formData.payer
+          ?.identification
+          ?.type ??
+          '',
+      ).trim();
+
+    const identificationNumber =
+      String(
+        formData.payer
+          ?.identification
+          ?.number ??
+          '',
+      ).trim();
+
+    if (
+      !token ||
+      !paymentMethodId
+    ) {
+      throw new Error(
+        'Não foi possível validar os dados do cartão.',
+      );
+    }
+
+    if (
+      !email ||
+      !email.includes('@')
+    ) {
+      throw new Error(
+        'Informe um e-mail válido.',
+      );
+    }
+
+    if (
+      !Number.isInteger(
+        installments,
+      ) ||
+      installments < 1
+    ) {
+      throw new Error(
+        'Número de parcelas inválido.',
+      );
+    }
+
+    try {
+      setCardProcessing(
+        true,
+      );
+
+      setCardResult(
+        null,
+      );
+
+      const response =
+        await fetch(
+          '/api/mercadopago/create-order',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  productId:
+                    product.id,
+
+                  variantId:
+                    selectedVariant.id,
+
+                  quantity,
+
+                  paymentMethod:
+                    'card',
+
+                  email,
+
+                  shippingAddress,
+
+                  card: {
+                    token,
+
+                    paymentMethodId,
+
+                    paymentTypeId,
+
+                    installments,
+
+                    email,
+
+                    identificationType:
+                      identificationType ||
+                      undefined,
+
+                    identificationNumber:
+                      identificationNumber ||
+                      undefined,
+                  },
+                },
+              ),
+          },
+        );
+
+      const responseText =
+        await response.text();
+
+      let data: any = {};
+
+      try {
+        data =
+          responseText
+            ? JSON.parse(
+                responseText,
+              )
+            : {};
+      } catch {
+        throw new Error(
+          'O servidor retornou uma resposta inválida.',
+        );
+      }
+
+      if (!response.ok) {
+        console.error(
+          'Erro no pagamento com cartão:',
+          data,
+        );
+
+        throw new Error(
+          data?.error ??
+            'Não foi possível processar o cartão.',
+        );
+      }
+
+      const status =
+        String(
+          data.status ??
+            '',
+        ).toLowerCase();
+
+      setCardResult({
+        status,
+        orderNumber:
+          data.orderNumber,
+      });
+
+      if (
+        status ===
+          'approved' ||
+        status ===
+          'processed'
+      ) {
+        push({
+          tone:
+            'success',
+
+          title:
+            'Pagamento aprovado',
+
+          description:
+            data.orderNumber
+              ? `Pedido ${data.orderNumber} criado com sucesso.`
+              : 'Seu pagamento foi aprovado.',
+        });
+
+        return;
+      }
+
+      if (
+        status ===
+          'rejected' ||
+        status ===
+          'failed' ||
+        status ===
+          'cancelled' ||
+        status ===
+          'canceled'
+      ) {
+        throw new Error(
+          'O pagamento foi recusado. Confira os dados do cartão ou tente outro cartão.',
+        );
+      }
+
+      push({
+        tone:
+          'success',
+
+        title:
+          'Pagamento recebido',
+
+        description:
+          'O Mercado Pago está processando o pagamento.',
+      });
+    } catch (error) {
+      console.error(
+        error,
+      );
+
+      push({
+        tone:
+          'danger',
+
+        title:
+          'Erro no pagamento',
+
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível processar o cartão.',
+      });
+
+      throw error;
+    } finally {
+      setCardProcessing(
+        false,
+      );
     }
   }
 
@@ -432,15 +1028,19 @@ export function ProductOptions({
     );
 
   const totalPrice =
-    (product.priceCents / 100) *
+    (product.priceCents /
+      100) *
     quantity;
 
   const formattedTotal =
     totalPrice.toLocaleString(
       'pt-BR',
       {
-        style: 'currency',
-        currency: 'BRL',
+        style:
+          'currency',
+
+        currency:
+          'BRL',
       },
     );
 
@@ -451,7 +1051,9 @@ export function ProductOptions({
           {selectedVariant && (
             <span className="font-mono">
               SKU{' '}
-              {selectedVariant.sku}
+              {
+                selectedVariant.sku
+              }
             </span>
           )}
 
@@ -476,7 +1078,10 @@ export function ProductOptions({
             {selectedColor && (
               <span className="text-foreground">
                 {' '}
-                — {selectedColor}
+                —{' '}
+                {
+                  selectedColor
+                }
               </span>
             )}
           </p>
@@ -488,8 +1093,12 @@ export function ProductOptions({
                 available,
               }) => (
                 <ColorSwatch
-                  key={color}
-                  color={color}
+                  key={
+                    color
+                  }
+                  color={
+                    color
+                  }
                   active={
                     color ===
                     selectedColor
@@ -532,11 +1141,15 @@ export function ProductOptions({
           </p>
 
           <QuantityStepper
-            value={quantity}
+            value={
+              quantity
+            }
             onChange={
               setQuantity
             }
-            max={maxQuantity}
+            max={
+              maxQuantity
+            }
           />
 
           {selectedVariant &&
@@ -592,12 +1205,13 @@ export function ProductOptions({
             />
 
             <ShareButton
-              title={product.name}
+              title={
+                product.name
+              }
               url={
                 typeof window !==
                 'undefined'
-                  ? window.location
-                      .href
+                  ? window.location.href
                   : ''
               }
             />
@@ -612,18 +1226,19 @@ export function ProductOptions({
         </div>
       </div>
 
-      {pixModalOpen && (
+      {paymentModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
           <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-2xl">
             <button
               type="button"
               onClick={
-                closePixModal
+                closePaymentModal
               }
               disabled={
-                pixLoading
+                pixLoading ||
+                cardProcessing
               }
-              aria-label="Fechar pagamento Pix"
+              aria-label="Fechar pagamento"
               className="absolute right-4 top-4 rounded-full border border-border p-2 text-muted transition hover:text-foreground disabled:opacity-50"
             >
               <X className="h-4 w-4" />
@@ -635,146 +1250,375 @@ export function ProductOptions({
               </p>
 
               <h2 className="mt-2 text-2xl font-semibold text-foreground">
-                Pagamento via Pix
+                {checkoutStep ===
+                'address'
+                  ? 'Endereço de entrega'
+                  : !paymentMethod
+                    ? 'Escolha a forma de pagamento'
+                    : paymentMethod ===
+                        'pix'
+                      ? 'Pagamento via Pix'
+                      : 'Pagamento com cartão'}
               </h2>
 
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                {product.name} —{' '}
-                {selectedColor},{' '}
-                {selectedSize} ×{' '}
-                {quantity}
+                {
+                  product.name
+                }{' '}
+                —{' '}
+                {
+                  selectedColor
+                }
+                ,{' '}
+                {
+                  selectedSize
+                }{' '}
+                ×{' '}
+                {
+                  quantity
+                }
               </p>
 
               <p className="mt-3 text-xl font-semibold text-foreground">
-                {formattedTotal}
+                {
+                  formattedTotal
+                }
               </p>
             </div>
 
-            {!pixData ? (
-              <div className="mt-6">
-                <label
-                  htmlFor="pix-email"
-                  className="mb-2 block text-sm font-medium text-foreground"
-                >
-                  E-mail
-                </label>
-
-                <input
-                  id="pix-email"
-                  type="email"
-                  value={
-                    payerEmail
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setPayerEmail(
-                      event.target
-                        .value,
-                    )
-                  }
-                  placeholder="seuemail@exemplo.com"
-                  autoComplete="email"
-                  className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-foreground outline-none transition placeholder:text-muted focus:border-foreground"
-                />
-
-                <p className="mt-2 text-xs leading-relaxed text-muted">
-                  Informe o e-mail
-                  do comprador para
-                  gerar o pagamento
-                  Pix.
-                </p>
-
-                <Button
-                  size="lg"
-                  className="mt-5 w-full"
-                  onClick={
-                    handleCreatePix
-                  }
-                  disabled={
-                    pixLoading
-                  }
-                >
-                  <Zap className="h-4 w-4" />
-
-                  {pixLoading
-                    ? 'Gerando Pix...'
-                    : 'Gerar Pix'}
-                </Button>
-
-                <p className="mt-4 text-center text-xs text-muted">
-                  Pagamento processado
-                  com segurança pelo
-                  Mercado Pago.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-6">
-                {pixData.qrCodeBase64 && (
-                  <div className="mx-auto w-fit rounded-2xl bg-white p-4">
-                    <img
-                      src={`data:image/png;base64,${pixData.qrCodeBase64}`}
-                      alt="QR Code Pix"
-                      className="h-56 w-56"
-                    />
-                  </div>
-                )}
-
-                <p className="mt-5 text-center text-sm font-medium text-foreground">
-                  Escaneie o QR Code
-                  ou use o Pix Copia
-                  e Cola
-                </p>
-
-                {pixData.qrCode && (
-                  <>
-                    <div className="mt-4 max-h-28 overflow-y-auto break-all rounded-xl border border-border bg-surface p-4 text-xs leading-relaxed text-muted">
-                      {
-                        pixData.qrCode
-                      }
-                    </div>
-
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      className="mt-3 w-full"
-                      onClick={
-                        handleCopyPix
-                      }
-                    >
-                      <Copy className="h-4 w-4" />
-                      Copiar código
-                      Pix
-                    </Button>
-                  </>
-                )}
-
-                {pixData.ticketUrl && (
-                  <a
-                    href={
-                      pixData.ticketUrl
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 block rounded-xl border border-border px-4 py-3 text-center text-sm font-medium text-foreground transition hover:border-foreground"
-                  >
-                    Abrir pagamento
-                    Pix
-                  </a>
-                )}
-
-                <div className="mt-5 rounded-xl border border-border bg-surface p-4 text-center">
-                  <p className="text-xs uppercase tracking-wider text-muted">
-                    Status
-                  </p>
-
-                  <p className="mt-1 text-sm font-medium text-foreground">
-                    Aguardando
-                    pagamento
-                  </p>
-                </div>
-              </div>
+            {checkoutStep ===
+              'address' && (
+              <CheckoutAddressForm
+                onContinue={
+                  handleAddressContinue
+                }
+              />
             )}
+
+            {checkoutStep ===
+              'payment' &&
+              !paymentMethod && (
+                <>
+                  <button
+                    type="button"
+                    onClick={
+                      returnToAddress
+                    }
+                    className="mt-5 text-sm font-medium text-muted transition hover:text-foreground"
+                  >
+                    ← Alterar endereço
+                  </button>
+
+                  <div className="mt-5 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPixData(
+                          null,
+                        );
+
+                        setPaymentMethod(
+                          'pix',
+                        );
+                      }}
+                      className="flex w-full items-center gap-4 rounded-2xl border border-border bg-surface p-4 text-left transition hover:border-foreground"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border">
+                        <Zap className="h-5 w-5" />
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">
+                          Pix
+                        </p>
+
+                        <p className="mt-1 text-xs text-muted">
+                          Pagamento rápido
+                          por QR Code ou
+                          Pix Copia e Cola
+                        </p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCardResult(
+                          null,
+                        );
+
+                        setPaymentMethod(
+                          'card',
+                        );
+                      }}
+                      className="flex w-full items-center gap-4 rounded-2xl border border-border bg-surface p-4 text-left transition hover:border-foreground"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border">
+                        <CreditCard className="h-5 w-5" />
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">
+                          Cartão de crédito
+                        </p>
+
+                        <p className="mt-1 text-xs text-muted">
+                          Pague com cartão
+                          e escolha as
+                          parcelas
+                          disponíveis
+                        </p>
+                      </div>
+                    </button>
+
+                    <p className="pt-2 text-center text-xs text-muted">
+                      Pagamento processado
+                      com segurança pelo
+                      Mercado Pago.
+                    </p>
+                  </div>
+                </>
+              )}
+
+            {checkoutStep ===
+              'payment' &&
+              paymentMethod ===
+                'pix' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={
+                      returnToPaymentMethods
+                    }
+                    disabled={
+                      pixLoading
+                    }
+                    className="mt-5 text-sm font-medium text-muted transition hover:text-foreground disabled:opacity-50"
+                  >
+                    ← Voltar para formas
+                    de pagamento
+                  </button>
+
+                  {!pixData ? (
+                    <div className="mt-5">
+                      <label
+                        htmlFor="pix-email"
+                        className="mb-2 block text-sm font-medium text-foreground"
+                      >
+                        E-mail
+                      </label>
+
+                      <input
+                        id="pix-email"
+                        type="email"
+                        value={
+                          payerEmail
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setPayerEmail(
+                            event
+                              .target
+                              .value,
+                          )
+                        }
+                        placeholder="seuemail@exemplo.com"
+                        autoComplete="email"
+                        className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-foreground outline-none transition placeholder:text-muted focus:border-foreground"
+                      />
+
+                      <p className="mt-2 text-xs leading-relaxed text-muted">
+                        Informe o e-mail
+                        do comprador para
+                        gerar o pagamento
+                        Pix.
+                      </p>
+
+                      <Button
+                        size="lg"
+                        className="mt-5 w-full"
+                        onClick={
+                          handleCreatePix
+                        }
+                        disabled={
+                          pixLoading
+                        }
+                      >
+                        <Zap className="h-4 w-4" />
+
+                        {pixLoading
+                          ? 'Gerando Pix...'
+                          : 'Gerar Pix'}
+                      </Button>
+
+                      <p className="mt-4 text-center text-xs text-muted">
+                        Pagamento
+                        processado com
+                        segurança pelo
+                        Mercado Pago.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-6">
+                      {pixData.qrCodeBase64 && (
+                        <div className="mx-auto w-fit rounded-2xl bg-white p-4">
+                          <img
+                            src={`data:image/png;base64,${pixData.qrCodeBase64}`}
+                            alt="QR Code Pix"
+                            className="h-56 w-56"
+                          />
+                        </div>
+                      )}
+
+                      <p className="mt-5 text-center text-sm font-medium text-foreground">
+                        Escaneie o QR
+                        Code ou use o Pix
+                        Copia e Cola
+                      </p>
+
+                      {pixData.qrCode && (
+                        <>
+                          <div className="mt-4 max-h-28 overflow-y-auto break-all rounded-xl border border-border bg-surface p-4 text-xs leading-relaxed text-muted">
+                            {
+                              pixData.qrCode
+                            }
+                          </div>
+
+                          <Button
+                            size="lg"
+                            variant="secondary"
+                            className="mt-3 w-full"
+                            onClick={
+                              handleCopyPix
+                            }
+                          >
+                            <Copy className="h-4 w-4" />
+                            Copiar código
+                            Pix
+                          </Button>
+                        </>
+                      )}
+
+                      {pixData.ticketUrl && (
+                        <a
+                          href={
+                            pixData.ticketUrl
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 block rounded-xl border border-border px-4 py-3 text-center text-sm font-medium text-foreground transition hover:border-foreground"
+                        >
+                          Abrir pagamento
+                          Pix
+                        </a>
+                      )}
+
+                      <div className="mt-5 rounded-xl border border-border bg-surface p-4 text-center">
+                        <p className="text-xs uppercase tracking-wider text-muted">
+                          Status
+                        </p>
+
+                        <p className="mt-1 text-sm font-medium text-foreground">
+                          Aguardando
+                          pagamento
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+            {checkoutStep ===
+              'payment' &&
+              paymentMethod ===
+                'card' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={
+                      returnToPaymentMethods
+                    }
+                    disabled={
+                      cardProcessing
+                    }
+                    className="mt-5 text-sm font-medium text-muted transition hover:text-foreground disabled:opacity-50"
+                  >
+                    ← Voltar para formas
+                    de pagamento
+                  </button>
+
+                  <div className="mt-5">
+                    {!cardResult ? (
+                      <>
+                        <MercadoPagoCardForm
+                          amount={
+                            totalPrice
+                          }
+                          onSubmit={
+                            handleCardSubmit
+                          }
+                        />
+
+                        {cardProcessing && (
+                          <p className="mt-4 text-center text-sm text-muted">
+                            Processando
+                            pagamento...
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <div className="rounded-2xl border border-border bg-surface p-5 text-center">
+                        <CreditCard className="mx-auto h-8 w-8" />
+
+                        <p className="mt-3 text-lg font-semibold text-foreground">
+                          {cardResult.status ===
+                            'approved' ||
+                          cardResult.status ===
+                            'processed'
+                            ? 'Pagamento aprovado'
+                            : 'Pagamento em processamento'}
+                        </p>
+
+                        {cardResult.orderNumber && (
+                          <p className="mt-2 text-sm text-muted">
+                            Pedido{' '}
+                            {
+                              cardResult.orderNumber
+                            }
+                          </p>
+                        )}
+
+                        <p className="mt-3 text-sm leading-relaxed text-muted">
+                          {cardResult.status ===
+                            'approved' ||
+                          cardResult.status ===
+                            'processed'
+                            ? 'Seu pagamento foi aprovado pelo Mercado Pago.'
+                            : 'O Mercado Pago está processando seu pagamento.'}
+                        </p>
+
+                        <Button
+                          size="lg"
+                          className="mt-5 w-full"
+                          onClick={
+                            closePaymentModal
+                          }
+                        >
+                          Fechar
+                        </Button>
+                      </div>
+                    )}
+
+                    <p className="mt-4 text-center text-xs text-muted">
+                      Os dados do cartão
+                      são processados com
+                      segurança pelo
+                      Mercado Pago.
+                    </p>
+                  </div>
+                </>
+              )}
           </div>
         </div>
       )}
