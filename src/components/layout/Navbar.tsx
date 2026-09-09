@@ -10,7 +10,6 @@ import { useUIStore } from '@/store/ui';
 import { cn } from '@/utils/cn';
 
 const LINKS = [
-  { href: '/shop', label: 'Shop' },
   { href: '/drops', label: 'Drops' },
   { href: '/ghost-studio', label: 'Ghost Studio' },
   { href: '/community', label: 'Community' },

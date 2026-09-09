@@ -6,7 +6,6 @@ import { Drawer } from '@/components/ui/Drawer';
 import { useUIStore } from '@/store/ui';
 
 const LINKS = [
-  { href: '/shop', label: 'Shop' },
   { href: '/drops', label: 'Drops' },
   { href: '/ghost-studio', label: 'Ghost Studio' },
   { href: '/community', label: 'Community' },
@@ -19,7 +18,12 @@ export function MobileMenu() {
   const { mobileMenuOpen, closeMobileMenu, openSearch, openWishlist } = useUIStore();
 
   return (
-    <Drawer open={mobileMenuOpen} onOpenChange={(open) => !open && closeMobileMenu()} title="Menu" fullscreen>
+    <Drawer
+      open={mobileMenuOpen}
+      onOpenChange={(open) => !open && closeMobileMenu()}
+      title="Menu"
+      fullscreen
+    >
       <nav className="flex flex-col">
         {LINKS.map((link) => (
           <Link
@@ -43,6 +47,7 @@ export function MobileMenu() {
         >
           <Search className="h-4 w-4" /> Buscar
         </button>
+
         <button
           onClick={() => {
             closeMobileMenu();
@@ -52,7 +57,12 @@ export function MobileMenu() {
         >
           <Heart className="h-4 w-4" /> Favoritos
         </button>
-        <Link href="/profile" onClick={closeMobileMenu} className="flex items-center gap-3 py-3 text-body-sm text-muted">
+
+        <Link
+          href="/profile"
+          onClick={closeMobileMenu}
+          className="flex items-center gap-3 py-3 text-body-sm text-muted"
+        >
           <User className="h-4 w-4" /> Perfil
         </Link>
       </div>

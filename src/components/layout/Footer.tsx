@@ -13,7 +13,6 @@ const COLUMNS = [
   {
     title: 'SHOP',
     links: [
-      { href: '/shop', label: 'Todos os Produtos' },
       { href: '/drops', label: 'Drops' },
       { href: '/ghost-studio', label: 'Ghost Studio' },
     ],
